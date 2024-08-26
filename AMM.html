@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AMM Simulator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background-color: #f0f0f0;
+    }
+    h1 {
+      color: #333;
+    }
+    canvas {
+      border: 1px solid #ccc;
+      max-width: 100%;
+      height: auto;
+    }
+    .controls {
+      margin-top: 20px;
+      text-align: center;
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .controls div {
+      margin: 10px;
+    }
+    .controls label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    .controls input {
+      padding: 5px;
+      font-size: 16px;
+      width: 100px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    #details {
+      margin-top: 20px;
+      padding: 10px;
+      background-color: #fff;
+      border: 1px solid #ccc;
+      text-align: left;
+      font-family: monospace;
+      white-space: pre;
+    }
+    .swap-title {
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>AMM Simulator</h1>
+  <canvas id="chart" width="800" height="400"></canvas>
+  <div class="controls">
+    <div>
+      <label for="ethAmount">ETH Amount:</label>
+      <input type="number" id="ethAmount" value="10" step="0.1" min="0">
+    </div>
+    <div>
+      <label for="usdcAmount">USDC Amount:</label>
+      <input type="number" id="usdcAmount" value="10000" step="1" min="0">
+    </div>
+    <div>
+      <label for="ethReserve">ETH Reserve:</label>
+      <input type="number" id="ethReserve" value="1000" step="0.1" min="0">
+      <span id="ethEquivalent"></span>
+    </div>
+    <div>
+      <label for="usdcReserve">USDC Reserve:</label>
+      <input type="number" id="usdcReserve" value="1000000" step="1" min="0">
+      <span id="usdcEquivalent"></span>
+    </div>
+    <div>
+      <button onclick="executeSwap('eth')">Swap ETH</button>
+      <button onclick="executeSwap('usdc')">Swap USDC</button>
+    </div>
+  </div>
+  <pre id="details"></pre>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    let ethReserveValue = 1000;
+    let usdcReserveValue = 1000000;
+    let k = ethReserveValue * usdcReserveValue;
+    let initialPrice = 1000;
+    const swapFee = 0.003; // 0.3% fee
+
+    let chart = new Chart(document.getElementById('chart'), {
+      type: 'bar',
+      data: {
+        labels: ['Initial Reserve'],
+        datasets: [
+          {
+            type: 'line',
+            label: 'ETH Price',
+            data: [initialPrice],
+            borderColor: 'red',
+            fill: false,
+            yAxisID: 'price'
+          },
+          {
+            type: 'bar',
+            label: 'ETH',
+            data: [ethReserveValue],
+            backgroundColor: 'blue',
+            yAxisID: 'reserve'
+          },
+          {
+            type: 'bar',
+            label: 'USDC',
+            data: [usdcReserveValue],
+            backgroundColor: 'green',
+            yAxisID: 'reserve'
+          }
+        ]
+      },
+      options: {
+        scales: {
+          'reserve': {
+            beginAtZero: true,
+            position: 'left'
+          },
+          'price': {
+            beginAtZero: true,
+            position: 'right'
+          }
+        }
+      }
+    });
+
+    updateEquivalents();
+
+    function executeSwap(asset) {
+      let amount;
+      if (asset === 'eth') {
+        amount = parseFloat(document.getElementById('ethAmount').value);
+        if (isNaN(amount) || amount <= 0) {
+          alert('Please enter a valid ETH amount.');
+          return;
+        }
+        let newEthReserve = ethReserveValue + amount;
+        let newUsdcReserve = (k / newEthReserve);
+        let usdcAmount = usdcReserveValue - newUsdcReserve;
+        let newPrice = newUsdcReserve / newEthReserve;
+        let averagePrice = (initialPrice + newPrice) / 2;
+
+        ethReserveValue = newEthReserve;
+        usdcReserveValue = newUsdcReserve;
+        k = ethReserveValue * usdcReserveValue;
+
+        chart.data.labels.push(`Swap ${amount} ETH`);
+        chart.data.datasets[0].data.push(newPrice);
+        chart.data.datasets[1].data.push(ethReserveValue);
+        chart.data.datasets[2].data.push(usdcReserveValue);
+        chart.update();
+
+        let details = `
+<div class="swap-title">Swap de ${amount} ETH</div>
+-----------------------------------
+You swapped ${amount} ETH for ${usdcAmount.toFixed(2)} USDC.
+New price: 1 ETH = ${newPrice.toFixed(2)} USDC (-${((initialPrice - newPrice) / initialPrice * 100).toFixed(2)}%)
+Average price paid: ${averagePrice.toFixed(2)} USDC
+
+ETH Reserve: ${ethReserveValue.toFixed(2)}
+USDC Reserve: ${usdcReserveValue.toFixed(2)}
+Constant Product (k): ${k.toFixed(2)}
+-----------------------------------
+`;
+        document.getElementById('details').innerHTML += details;
+
+        initialPrice = newPrice;
+        updateEquivalents();
+      } else if (asset === 'usdc') {
+        amount = parseFloat(document.getElementById('usdcAmount').value);
+        if (isNaN(amount) || amount <= 0) {
+          alert('Please enter a valid USDC amount.');
+          return;
+        }
+        let newUsdcReserve = usdcReserveValue + amount;
+        let newEthReserve = (k / newUsdcReserve);
+        let ethAmount = ethReserveValue - newEthReserve;
+        let newPrice = newUsdcReserve / newEthReserve;
+        let averagePrice = (initialPrice + newPrice) / 2;
+
+        ethReserveValue = newEthReserve;
+        usdcReserveValue = newUsdcReserve;
+        k = ethReserveValue * usdcReserveValue;
+
+        chart.data.labels.push(`Swap ${amount} USDC`);
+        chart.data.datasets[0].data.push(newPrice);
+        chart.data.datasets[1].data.push(ethReserveValue);
+        chart.data.datasets[2].data.push(usdcReserveValue);
+        chart.update();
+
+        let details = `
+<div class="swap-title">Swap de ${amount} USDC</div>
+-----------------------------------
+You swapped ${amount} USDC for ${ethAmount.toFixed(4)} ETH.
+New price: 1 ETH = ${newPrice.toFixed(2)} USDC (${((newPrice - initialPrice) / initialPrice * 100).toFixed(2)}%)
+Average price paid: ${averagePrice.toFixed(2)} USDC
+
+ETH Reserve: ${ethReserveValue.toFixed(2)}
+USDC Reserve: ${usdcReserveValue.toFixed(2)}
+Constant Product (k): ${k.toFixed(2)}
+-----------------------------------
+`;
+        document.getElementById('details').innerHTML += details;
+
+        initialPrice = newPrice;
+        updateEquivalents();
+      }
+    }
+
+    function updateEquivalents() {
+      document.getElementById('ethEquivalent').textContent = ` (${(usdcReserveValue / ethReserveValue).toFixed(2)} USDC)`;
+      document.getElementById('usdcEquivalent').textContent = ` (${(ethReserveValue / usdcReserveValue * 1000000).toFixed(4)} ETH)`;
+    }
+
+    document.getElementById('ethReserve').addEventListener('input', function() {
+      ethReserveValue = parseFloat(this.value);
+      k = ethReserveValue * usdcReserveValue;
+      updateEquivalents();
+    });
+
+    document.getElementById('usdcReserve').addEventListener('input', function() {
+      usdcReserveValue = parseFloat(this.value);
+      k = ethReserveValue * usdcReserveValue;
+      updateEquivalents();
+    });
+  </script>
+</body>
+</html>
